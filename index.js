@@ -9,53 +9,14 @@ const fs = require("fs");
 
   let flattenedArray;
   const bookDataArray = [];
-  for (let index = 1; index <= 50; index++) {
-    console.log(index);
+  for (let index = 1; index <= 5; index++) {
     if (index === 1) {
       // Navigate the page to a URL
       await page.goto(`https://books.toscrape.com/index.html`, {
         timeout: 60000,
       });
-
-      // Set screen size
-      // await page.setViewport({ width: 1080, height: 1024 });
+      
       await page.screenshot({ path: `images/page-${index}.png` });
-      //   await page.screenshot({ path: "homepage.png" });
-
-      const booksArray = await page.$$eval(
-        "#default > div > div > div > div > section > div:nth-child(2) > ol> li",
-        (elements) =>
-          elements.map((el, i) => {
-            const bookTitle = el.querySelector("h3> a").getAttribute("title");
-            const bookPrice = el.querySelector("p.price_color").innerText;
-            const imageLink = el.querySelector("img").getAttribute("src");
-            const inStock = el.querySelector("p.availability").innerText;
-
-            const bookDetailsLink = el
-              .querySelector("h3> a")
-              .getAttribute("href");
-
-            const data = {
-              i,
-              title: `${bookTitle}`,
-              detailsLink: `${bookDetailsLink}`,
-              price: `${bookPrice}`,
-              image: `https://books.toscrape.com/${imageLink}`,
-              availability: `${inStock}`,
-              // NumberLeft: `${data[1]}`,
-            };
-            return data;
-          })
-      );
-      const updatedBookNoInDataArray = booksArray.map((e) => {
-        return {
-          ...e,
-          i: e.i + 1,
-        };
-      });
-      // console.log(updatedBookNoInDataArray)
-
-      bookDataArray.push(updatedBookNoInDataArray);
     } else {
       // Navigate the page to a URL
       await page.goto(
@@ -65,69 +26,70 @@ const fs = require("fs");
         }
       );
 
-      // Set screen size
-      // await page.setViewport({ width: 1080, height: 1024 });
       await page.screenshot({ path: `images/page-${index}.png` });
-
-      const booksArray = await page.$$eval(
-        "#default > div > div > div > div > section > div:nth-child(2) > ol> li",
-        (elements) =>
-          elements.map((el, i) => {
-            const bookTitle = el.querySelector("h3> a").getAttribute("title");
-            const bookPrice = el.querySelector("p.price_color").innerText;
-            const imageLink = el.querySelector("img").getAttribute("src");
-            const inStock = el.querySelector("p.availability").innerText;
-
-            const bookDetailsLink = el
-              .querySelector("h3> a")
-              .getAttribute("href");
-
-            const data = {
-              i,
-              title: `${bookTitle}`,
-              detailsLink: `${bookDetailsLink}`,
-              price: `${bookPrice}`,
-              image: `https://books.toscrape.com/${imageLink}`,
-              availability: `${inStock}`,
-              // NumberLeft: `${noOfleftInStock}`,
-            };
-
-            return data;
-          })
-      );
-      const updatedBookNoInDataArray = booksArray.map((e) => {
-        return {
-          ...e,
-          i: (index - 1) * 20 + e.i + 1,
-        };
-      });
-
-      bookDataArray.push(updatedBookNoInDataArray);
-      flattenedArray = [].concat(...bookDataArray);
     }
-  }
 
-  await browser.close();
+    const booksArray = await page.$$eval(
+      "#default > div > div > div > div > section > div:nth-child(2) > ol> li",
+      (elements) =>
+        elements.map((el, i) => {
+          const bookTitle = el.querySelector("h3> a").getAttribute("title");
+          const bookPrice = el.querySelector("p.price_color").innerText;
+          const imageLink = el.querySelector("img").getAttribute("src");
+          const inStock = el.querySelector("p.availability").innerText;
+
+          const bookDetailsLink = el
+            .querySelector("h3> a")
+            .getAttribute("href");
+
+          const data = {
+            i,
+            title: `${bookTitle}`,
+            detailsLink: `${bookDetailsLink}`,
+            price: `${bookPrice}`,
+            image: `https://books.toscrape.com/${imageLink}`,
+            availability: `${inStock}`,
+          };
+
+          return data;
+        })
+    );
+
+    //Add an index number to each book detail.
+    const updatedBookNoInDataArray = booksArray.map((e) => {
+      return {
+        ...e,
+        i: index == 1 ? e.i + 1 : (index - 1) * 20 + e.i + 1,
+      };
+    });
+
+    bookDataArray.push(updatedBookNoInDataArray);
+
+    //Flatten out the array here
+    flattenedArray = [].concat(...bookDataArray);
+  }
 
   const addedData = [];
 
   const cluster = await Cluster.launch({
     concurrency: Cluster.CONCURRENCY_PAGE,
-    maxConcurrency: 1000,
+    maxConcurrency: 100,
     timeout: 10000000,
   });
 
+  //Catch any error that occurs when you scrape a particular page and log it to the console.
   cluster.on("taskerror", (err, data) => {
     console.log(`Error Crawling ${data}: ${err.message}`);
   });
 
+  //Describe what you want the scraper to do on each page here
   await cluster.task(async ({ page, data: url }) => {
     await page.goto(url, { timeout: 100000 });
     const details = await page.$eval("#content_inner > article > p", (el) => {
       if (el === undefined) {
         return "";
       } else {
-        el.innerText;
+        return el.innerText;
       }
     });
 
@@ -137,7 +99,7 @@ const fs = require("fs");
         if (el === undefined) {
           return "";
         } else {
-          el.innerText;
+          return el.innerText;
         }
       }
     );
@@ -147,7 +109,7 @@ const fs = require("fs");
         if (el === undefined) {
           return "";
         } else {
-          el.innerText;
+          return el.innerText;
         }
       }
     );
@@ -167,10 +129,9 @@ const fs = require("fs");
   }
 
   await cluster.idle();
-  // await cluster.close();
-  // console.log(addedData);
+  await cluster.close();
 
-  const newbookDataArray = flattenedArray.map((e, i) => {
+  const finalbookDataArray = flattenedArray.map((e, i) => {
     return {
       ...e,
       bookDescription: addedData[i].details,
@@ -179,11 +140,8 @@ const fs = require("fs");
     };
   });
 
-  // console.log("New Book Data Array  :", newbookDataArray);
-  const bookDataArrayJson = JSON.stringify(newbookDataArray, null, 2);
+  const bookDataArrayJson = JSON.stringify(finalbookDataArray, null, 2);
   fs.writeFileSync("scraped-data.json", bookDataArrayJson);
-
-  console.log("I have finished Scraping the entire website!!!!!!!");
 
   await browser.close();
 })();
